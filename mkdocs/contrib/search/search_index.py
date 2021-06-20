@@ -3,6 +3,7 @@ import re
 import json
 import logging
 import subprocess
+import jieba
 
 from html.parser import HTMLParser
 
@@ -103,7 +104,18 @@ class SearchIndex:
             'docs': self._entries,
             'config': self.config
         }
-        data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'), default=str)
+        for doc in page_dicts['docs']:
+            tokens = list(set([token.lower() for token in jieba.cut_for_search(doc['title'].replace('\n', ''), True)]))
+            if '' in tokens:
+                tokens.remove('')
+            doc['title_tokens'] = tokens
+
+            tokens = list(set([token.lower() for token in jieba.cut_for_search(doc['text'].replace('\n', ''), True)]))
+            if '' in tokens:
+                tokens.remove('')
+            doc['text_tokens'] = tokens
+
+        data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'), ensure_ascii=False, default=str)
 
         if self.config['prebuild_index'] in (True, 'node'):
             try:
@@ -118,7 +130,7 @@ class SearchIndex:
                 if not err:
                     idx = idx.decode('utf-8') if hasattr(idx, 'decode') else idx
                     page_dicts['index'] = json.loads(idx)
-                    data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'))
+                    data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
                     log.debug('Pre-built search index created successfully.')
                 else:
                     log.warning(f'Failed to pre-build search index. Error: {err}')
@@ -130,7 +142,7 @@ class SearchIndex:
                     ref='location', fields=('title', 'text'), documents=self._entries,
                     languages=self.config['lang'])
                 page_dicts['index'] = idx.serialize()
-                data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'))
+                data = json.dumps(page_dicts, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
             else:
                 log.warning(
                     "Failed to pre-build search index. The 'python' method was specified; "
