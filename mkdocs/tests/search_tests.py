@@ -56,15 +56,23 @@ class SearchConfigTests(unittest.TestCase):
 
     def test_lang_bad_type(self):
         option = search.LangOption()
-        self.assertRaises(ValidationError, option.validate, {})
+        with self.assertRaises(ValidationError):
+            option.validate({})
 
     def test_lang_bad_code(self):
         option = search.LangOption()
-        self.assertRaises(ValidationError, option.validate, ['foo'])
+        value = option.validate(['foo'])
+        self.assertEqual(['en'], value)
 
     def test_lang_good_and_bad_code(self):
         option = search.LangOption()
-        self.assertRaises(ValidationError, option.validate, ['en', 'foo'])
+        value = option.validate(['en', 'foo'])
+        self.assertEqual(['en'], value)
+
+    def test_lang_missing_and_with_territory(self):
+        option = search.LangOption()
+        value = option.validate(['zh_CN', 'pt_BR', 'fr'])
+        self.assertEqual(['fr', 'en', 'pt'], value)
 
 
 class SearchPluginTests(unittest.TestCase):
@@ -375,7 +383,7 @@ class SearchIndexTests(unittest.TestCase):
         """)
         toc = get_toc(get_markdown_toc(md))
 
-        full_content = ''.join("""Heading{0}Content{0}""".format(i) for i in range(1, 4))
+        full_content = ''.join(f"Heading{i}Content{i}" for i in range(1, 4))
 
         plugin = search.SearchPlugin()
         errors, warnings = plugin.load_config({})

@@ -1,5 +1,5 @@
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from mkdocs.structure.pages import Page
 from mkdocs.utils import nest_paths
@@ -118,27 +118,26 @@ def get_navigation(files, config):
         )
         # Any documentation files not found in the nav should still have an associated page, so we
         # create them here. The Page object will automatically be assigned to `file.page` during
-        # its creation (and this is the only way in which these page objects are accessable).
+        # its creation (and this is the only way in which these page objects are accessible).
         for file in missing_from_config:
             Page(None, file, config)
 
     links = _get_by_type(items, Link)
     for link in links:
-        scheme, netloc, path, params, query, fragment = urlparse(link.url)
+        scheme, netloc, path, query, fragment = urlsplit(link.url)
         if scheme or netloc:
             log.debug(
-                "An external link to '{}' is included in "
-                "the 'nav' configuration.".format(link.url)
+                f"An external link to '{link.url}' is included in the 'nav' configuration."
             )
         elif link.url.startswith('/'):
             log.debug(
-                "An absolute path to '{}' is included in the 'nav' configuration, "
-                "which presumably points to an external resource.".format(link.url)
+                f"An absolute path to '{link.url}' is included in the 'nav' "
+                "configuration, which presumably points to an external resource."
             )
         else:
             msg = (
-                "A relative path to '{}' is included in the 'nav' configuration, "
-                "which is not found in the documentation files".format(link.url)
+                f"A relative path to '{link.url}' is included in the 'nav' "
+                "configuration, which is not found in the documentation files"
             )
             log.warning(msg)
     return Navigation(items, pages)

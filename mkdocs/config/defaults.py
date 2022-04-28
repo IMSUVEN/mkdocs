@@ -6,7 +6,7 @@ from mkdocs.config import config_options
 
 # Once we drop Python 2.6 support, this could be an OrderedDict, however, it
 # isn't really needed either as we always sequentially process the schema other
-# than at initialisation when we grab the full set of keys for convenience.
+# than at initialization when we grab the full set of keys for convenience.
 
 
 def get_schema():
@@ -20,11 +20,10 @@ def get_schema():
 
         # Defines the structure of the navigation.
         ('nav', config_options.Nav()),
-        # TODO: remove this when the `pages` config setting is fully deprecated.
-        ('pages', config_options.Nav()),
+        ('pages', config_options.Deprecated(removed=True, moved_to='nav')),
 
         # The full URL to where the documentation will be hosted
-        ('site_url', config_options.URL(is_dir=True, required=True)),
+        ('site_url', config_options.URL(is_dir=True)),
 
         # A description for the documentation project that will be added to the
         # HTML meta tags.
@@ -120,4 +119,7 @@ def get_schema():
         # A key value pair should be the string name (as the key) and a dict of config
         # options (as the value).
         ('plugins', config_options.Plugins(default=['search'])),
+
+        # a list of extra paths to watch while running `mkdocs serve`
+        ('watch', config_options.ListOfPaths(default=[]))
     )

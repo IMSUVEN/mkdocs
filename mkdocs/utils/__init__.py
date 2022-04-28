@@ -17,7 +17,7 @@ import functools
 import importlib_metadata
 from collections import defaultdict
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 from yaml_env_tag import construct_env_tag
 from mergedeep import merge
 
@@ -241,6 +241,14 @@ def is_error_template(path):
     return bool(_ERROR_TEMPLATE_RE.match(path))
 
 
+@functools.lru_cache(maxsize=None)
+def _norm_parts(path):
+    if not path.startswith('/'):
+        path = '/' + path
+    path = posixpath.normpath(path)[1:]
+    return path.split('/') if path else []
+
+
 def get_relative_url(url, other):
     """
     Return given url relative to other.
@@ -251,11 +259,21 @@ def get_relative_url(url, other):
     Paths are normalized ('..' works as parent directory), but going higher than the
     root has no effect ('foo/../../bar' ends up just as 'bar').
     """
-    if other != '.':
-        # Remove filename from other url if it has one.
-        parts = posixpath.split(other)
-        other = parts[0] if '.' in parts[1] else other
-    relurl = posixpath.relpath('/' + url, '/' + other)
+    # Remove filename from other url if it has one.
+    dirname, _, basename = other.rpartition('/')
+    if '.' in basename:
+        other = dirname
+
+    other_parts = _norm_parts(other)
+    dest_parts = _norm_parts(url)
+    common = 0
+    for a, b in zip(other_parts, dest_parts):
+        if a != b:
+            break
+        common += 1
+
+    rel_parts = ['..'] * (len(other_parts) - common) + dest_parts[common:]
+    relurl = '/'.join(rel_parts) or '.'
     return relurl + '/' if url.endswith('/') else relurl
 
 
@@ -265,26 +283,18 @@ def normalize_url(path, page=None, base=''):
     if is_abs:
         return path
     if page is not None:
-        base = page.url
-    return _get_rel_path(path, base, page is not None)
+        return get_relative_url(path, page.url)
+    return posixpath.join(base, path)
 
 
 @functools.lru_cache(maxsize=None)
 def _get_norm_url(path):
     path = path_to_url(path or '.')
-    # Allow links to be fully qualified URL's
-    parsed = urlparse(path)
+    # Allow links to be fully qualified URLs
+    parsed = urlsplit(path)
     if parsed.scheme or parsed.netloc or path.startswith(('/', '#')):
         return path, True
     return path, False
-
-
-@functools.lru_cache()
-def _get_rel_path(path, base, base_is_url):
-    if base_is_url:
-        return get_relative_url(path, base)
-    else:
-        return posixpath.join(base, path)
 
 
 def create_media_urls(path_list, page=None, base=''):
@@ -432,10 +442,7 @@ class CountHandler(logging.NullHandler):
         return [(logging.getLevelName(k), v) for k, v in sorted(self.counts.items(), reverse=True)]
 
 
-# A global instance to use throughout package
-log_counter = CountHandler()
-
-# For backward compatability as some plugins import it.
-# It is no longer nessecary as all messages on the
-# `mkdocs` logger get counted automaticaly.
+# For backward compatibility as some plugins import it.
+# It is no longer necessary as all messages on the
+# `mkdocs` logger get counted automatically.
 warning_filter = logging.Filter()

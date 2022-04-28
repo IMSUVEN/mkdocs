@@ -349,6 +349,10 @@ page.
 
 [base_url]: #base_url
 
+##### page.file
+
+The documentation `File` that the page is being rendered from.
+
 ##### page.abs_url
 
 The absolute URL of the page from the server root as determined by the value
@@ -447,7 +451,7 @@ A `section` navigation object defines a named section in the navigation and
 contains a list of child navigation objects. Note that sections do not contain
 URLs and are not links of any kind. However, by default, MkDocs sorts index
 pages to the top and the first child might be used as the URL for a section if a
-theme choses to do so.
+theme chooses to do so.
 
  The following attributes are available on `section` objects:
 
@@ -498,7 +502,7 @@ The title of the link. This would generally be used as the label of the link.
 ##### link.url
 
 The URL that the link points to. The URL should always be an absolute URLs and
-should not need to have `base_url` prepened.
+should not need to have `base_url` prepended.
 
 ##### link.parent
 
@@ -562,7 +566,7 @@ And then displayed with this HTML in the custom theme.
 
 ## Template Filters
 
-In addition to Jinja's default filters, the following custom filters are
+In addition to [Jinja's default filters], the following custom filters are
 available to use in MkDocs templates:
 
 ### url
@@ -673,7 +677,7 @@ objects.
 ```json
 {
     config: {...},
-    data: [...],
+    docs: [...],
     index: {...}
 }
 ```
@@ -682,7 +686,7 @@ If present, the `config` object contains the key/value pairs of config options
 defined for the plugin in the user's `mkdocs.yml` config file under
 `plugings.search`. The `config` object was new in MkDocs version *1.0*.
 
-The `data` object contains a list of document objects. Each document object is
+The `docs` object contains a list of document objects. Each document object is
 made up of a `location` (URL), a `title`, and `text` which can be used to create
 a search index and/or display search results.
 
@@ -698,6 +702,7 @@ index when it is available. The `index` object was new in MkDocs version *1.0*.
 [lunr.js]: https://lunrjs.com/
 [site_dir]: ../user-guide/configuration.md#site_dir
 [prebuild_index]: ../user-guide/configuration.md#prebuild_index
+[Jinja's default filters]: https://jinja.palletsprojects.com/en/latest/templates/#builtin-filters
 
 ## Packaging Themes
 
@@ -727,14 +732,14 @@ Bootswatch theme].
 The following layout is recommended for themes. Two files at the top level
 directory called `MANIFEST.in` and `setup.py` beside the theme directory which
 contains an empty `__init__.py` file, a theme configuration file
-(`mkdocs-theme.yml`), and your template and media files.
+(`mkdocs_theme.yml`), and your template and media files.
 
 ```no-highlight
 .
 |-- MANIFEST.in
 |-- theme_name
 |   |-- __init__.py
-|   |-- mkdocs-theme.yml
+|   |-- mkdocs_theme.yml
 |   |-- main.html
 |   |-- styles.css
 `-- setup.py
@@ -778,9 +783,9 @@ setup(
 
 Fill in the URL, license, description, author and author email address.
 
-The name should follow the convention `mkdocs-themename` (like `mkdocs-
-bootstrap` and `mkdocs-bootswatch`), starting with MkDocs, using hyphens to
-separate words and including the name of your theme.
+The name should follow the convention `mkdocs-themename` (like
+`mkdocs-bootstrap` and `mkdocs-bootswatch`), starting with MkDocs, using
+hyphens to separate words and including the name of your theme.
 
 Most of the rest of the file can be left unedited. The last section we need to
 change is the entry_points. This is how MkDocs finds the theme(s) you are
@@ -876,7 +881,8 @@ special options which alters its behavior:
     #### extends
 
     Defines a parent theme that this theme inherits from. The value should be
-    the string name of the parent theme. Normal Jinja inheritance rules apply.
+    the string name of the parent theme. Normal [Jinja inheritance rules]
+    apply.
 
 Plugins may also define some options which allow the theme to inform a plugin
 about which set of plugin options it expects. See the documentation for any
@@ -902,6 +908,7 @@ documentation for [Packaging and Distributing Projects].
 
 [Packaging and Distributing Projects]: https://packaging.python.org/en/latest/distributing/
 [theme]: ../user-guide/configuration.md#theme
+[Jinja inheritance rules]: https://jinja.palletsprojects.com/en/latest/templates/#template-inheritance
 
 ## Supporting theme Localization/Translation
 

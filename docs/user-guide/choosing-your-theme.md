@@ -93,7 +93,7 @@ supports the following options:
             name: mkdocs
             nav_style: dark
 
-* __`locale`__{ #mkdocs-locale }: The locale (languange/location) used to
+* __`locale`__{ #mkdocs-locale }: The locale (language/location) used to
   build the theme. If your locale is not yet supported, it will fallback
   to the default.
 
@@ -102,6 +102,11 @@ supports the following options:
     * `en`: English (default)
     * `fr`: French
     * `es`: Spanish
+    * `ja`: Japanese
+    * `pt_BR`: Portuguese (Brazil)
+    * `zh_CN`: Simplified Chinese
+    * `de`: German
+    * `fa`: Persian (Farsi)
 
     See the guide on [localizing your theme] for more information.
 
@@ -130,7 +135,6 @@ theme supports the following options:
                 - rust
 
 * __`analytics`__: Defines configuration options for an analytics service.
-  Currently, only Google Analytics v4 is supported via the `gtag` option.
 
     * __`gtag`__: To enable Google Analytics, set to a Google Analytics v4
     tracking ID, which uses the `G-` format. See Google's documentation to
@@ -143,6 +147,9 @@ theme supports the following options:
                     gtag: G-ABC123
 
         When set to the default (`null`) Google Analytics is disabled for the
+
+    * __`anonymize_ip`__: To enable anonymous IP address for Google Analytics,
+    set this to `True`. Default: `False`.
 
 * __`include_homepage_in_sidebar`__: Lists the homepage in the sidebar menu. As
   MkDocs requires that the homepage be listed in the `nav` configuration
@@ -165,7 +172,7 @@ theme supports the following options:
 * __`sticky_navigation`__: If True, causes the sidebar to scroll with the main
   page content as you scroll the page. Default: `True`.
 
-* __`locale`__{ #readthedocs-locale }: The locale (languange/location) used to
+* __`locale`__{ #readthedocs-locale }: The locale (language/location) used to
   build the theme. If your locale is not yet supported, it will fallback
   to the default.
 
@@ -174,8 +181,16 @@ theme supports the following options:
     * `en`: English (default)
     * `fr`: French
     * `es`: Spanish
+    * `ja`: Japanese
+    * `pt_BR`: Portuguese (Brazil)
+    * `zh_CN`: Simplified Chinese
+    * `de`: German
+    * `fa`: Persian (Farsi)
 
     See the guide on [localizing your theme] for more information.
+
+* __`logo`__: To set a logo on your project instead of the plain text
+  `site_name`, set this variable to be the location of your image. Default: `null`.
 
 ## Third Party Themes
 

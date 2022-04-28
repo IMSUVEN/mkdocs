@@ -1,7 +1,7 @@
 import logging
 import os
 import gzip
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from jinja2.exceptions import TemplateNotFound
 import jinja2
@@ -72,11 +72,11 @@ def _build_template(name, template, files, config, nav):
 
     if utils.is_error_template(name):
         # Force absolute URLs in the nav of error pages and account for the
-        # possability that the docs root might be different than the server root.
+        # possibility that the docs root might be different than the server root.
         # See https://github.com/mkdocs/mkdocs/issues/77.
         # However, if site_url is not set, assume the docs root and server root
         # are the same. See https://github.com/mkdocs/mkdocs/issues/1598.
-        base_url = urlparse(config['site_url'] or '/').path
+        base_url = urlsplit(config['site_url'] or '/').path
     else:
         base_url = utils.get_relative_url('.', name)
 
@@ -136,7 +136,7 @@ def _build_extra_template(template_name, files, config, nav):
         return
 
     try:
-        with open(file.abs_src_path, 'r', encoding='utf-8', errors='strict') as f:
+        with open(file.abs_src_path, encoding='utf-8', errors='strict') as f:
             template = jinja2.Template(f.read())
     except Exception as e:
         log.warning(f"Error reading template '{template_name}': {e}")
@@ -240,8 +240,16 @@ def _build_page(page, config, doc_files, nav, env, dirty=False):
 
 def build(config, live_server=False, dirty=False):
     """ Perform a full site build. """
-    try:
 
+    logger = logging.getLogger('mkdocs')
+
+    # Add CountHandler for strict mode
+    warning_counter = utils.CountHandler()
+    warning_counter.setLevel(logging.WARNING)
+    if config['strict']:
+        logging.getLogger('mkdocs').addHandler(warning_counter)
+
+    try:
         from time import time
         start = time()
 
@@ -308,8 +316,8 @@ def build(config, live_server=False, dirty=False):
         # Run `post_build` plugin events.
         config['plugins'].run_event('post_build', config=config)
 
-        counts = utils.log_counter.get_counts()
-        if config['strict'] and len(counts):
+        counts = warning_counter.get_counts()
+        if counts:
             msg = ', '.join([f'{v} {k.lower()}s' for k, v in counts])
             raise Abort(f'\nAborted with {msg} in strict mode!')
 
@@ -322,6 +330,9 @@ def build(config, live_server=False, dirty=False):
             log.error(str(e))
             raise Abort('\nAborted with a BuildError!')
         raise
+
+    finally:
+        logger.removeHandler(warning_counter)
 
 
 def site_directory_contains_stale_files(site_directory):

@@ -6,8 +6,9 @@ Guide to all available configuration settings.
 
 ## Introduction
 
-Project settings are always configured by using a YAML configuration file in the
-project directory named `mkdocs.yml`.
+Project settings are configured by default using a YAML configuration file in
+the project directory named `mkdocs.yml`. You can specify another path for it
+by using the `-f`/`--config-file` option (see `mkdocs build --help`).
 
 As a minimum, this configuration file must contain the `site_name` and
 `site_url` settings. All other settings are optional.
@@ -28,16 +29,17 @@ variable.
 
 ### site_url
 
-Set the canonical URL of the site. This is a **required setting**.  If the
-'root' of the MkDocs site will be within a subdirectory of a domain, be sure to
-include that subdirectory in the setting (`https://example.com/foo/`). If the
-domain is yet to be determined, you may use a placeholder domain, which will
-need to be updated prior to deployment.
+Set the canonical URL of the site. This will add a `link` tag with the
+`canonical` URL to the `head` section of each HTML page. If the 'root' of the
+MkDocs site will be within a subdirectory of a domain, be sure to include that
+subdirectory in the setting (`https://example.com/foo/`).
 
-If the built site will not be behind a server, then you may set the value to an
-empty string (`''`). When set to an empty string, some features of MkDocs may
-act differently. For example, the [use_directory_urls](#use_directory_urls)
-setting must be set to `false`.
+This setting is also used for `mkdocs serve`: the server will be mounted onto a
+path taken from the path component of the URL, e.g. `some/page.md` will be
+served from `http://127.0.0.1:8000/foo/some/page/` to mimic the expected remote
+layout.
+
+**default**: `null`
 
 ### repo_url
 
@@ -144,14 +146,14 @@ Set the copyright information to be included in the documentation by the theme.
 
 ### remote_branch
 
-Set the remote branch to commit to when using `gh-deploy` to deploy to Github
+Set the remote branch to commit to when using `gh-deploy` to deploy to GitHub
 Pages. This option can be overridden by a command line option in `gh-deploy`.
 
 **default**: `gh-pages`
 
 ### remote_name
 
-Set the remote name to push to when using `gh-deploy` to deploy to Github Pages.
+Set the remote name to push to when using `gh-deploy` to deploy to GitHub Pages.
 This option can be overridden by a command line option in `gh-deploy`.
 
 **default**: `origin`
@@ -169,9 +171,10 @@ nav:
     - 'about.md'
 ```
 
-All paths must be relative to the `mkdocs.yml` configuration file. See the
-section on [configuring pages and navigation] for a more detailed breakdown,
-including how to create sub-sections.
+All paths in the navigation configuration must be relative to the
+[`docs_dir`](#docs_dir) configuration option. See the section on [configuring
+pages and navigation] for a more detailed breakdown, including how to create
+sub-sections.
 
 Navigation items may also include links to external sites. While titles are
 optional for internal links, they are required for external links. An external
@@ -353,6 +356,28 @@ extra:
 
 ## Preview controls
 
+## Live Reloading
+
+### watch
+
+Determines additional directories to watch when running `mkdocs serve`.
+Configuration is a YAML list.
+
+```yaml
+watch:
+- directory_a
+- directory_b
+```
+
+Allows a custom default to be set without the need to pass it through the `-w`/`--watch`
+option every time the `mkdocs serve` command is called.
+
+!!! Note
+
+    The paths provided via the configuration file are relative to the configuration file.
+
+    The paths provided via the `-w`/`--watch` CLI parameters are not. 
+
 ### use_directory_urls
 
 This setting controls the style used for linking to pages within the
@@ -373,8 +398,7 @@ and is usually what you'll want to use.
 The alternate style can be useful if you want your documentation to remain
 properly linked when opening pages directly from the file system, because it
 creates links that point directly to the target *file* rather than the target
-*directory*. In fact, this setting **must be** `false` if [site_url](#site_url)
-is set to an emtpy string.
+*directory*.
 
 **default**: `true`
 
@@ -394,6 +418,8 @@ Allows a custom default to be set without the need to pass it through the
 `--dev-addr` option every time the `mkdocs serve` command is called.
 
 **default**: `'127.0.0.1:8000'`
+
+See also: [site_url](#site_url).
 
 ## Formatting options
 
@@ -617,7 +643,7 @@ themes do). Set to `true` to enable.
 
     This option requires that [Node.js] be installed and the command `node` be
     on the system path. If the call to `node` fails for any reason, a warning
-    is issued and the build continues uninterupted. You may use the `--strict`
+    is issued and the build continues uninterrupted. You may use the `--strict`
     flag when building to cause such a failure to raise an error instead.
 
 !!! Note

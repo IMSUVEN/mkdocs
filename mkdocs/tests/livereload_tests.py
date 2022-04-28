@@ -38,7 +38,7 @@ def testing_server(root, builder=lambda: None, mount_path="/"):
             port=0,
             root=root,
             mount_path=mount_path,
-            build_delay=0.1,
+            polling_interval=0.2,
             bind_and_activate=False,
         )
         server.setup_environ()
@@ -65,7 +65,7 @@ def do_request(server, content):
 
 
 SCRIPT_REGEX = (
-    r'<script src="/js/livereload.js"></script><script>livereload\([0-9]+, [0-9]+\);</script>'
+    r'<script>[\S\s]+?livereload\([0-9]+, [0-9]+\);\s*</script>'
 )
 
 
@@ -146,7 +146,7 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(started_building.wait(timeout=10))
 
     @tempdir()
-    def test_no_rebuild_on_edit(self, site_dir):
+    def test_rebuild_on_edit(self, site_dir):
         started_building = threading.Event()
 
         with open(Path(site_dir, "test"), "wb") as f:
@@ -159,7 +159,7 @@ class BuildTests(unittest.TestCase):
                 f.write(b"hi\n")
                 f.flush()
 
-                self.assertFalse(started_building.wait(timeout=0.2))
+                self.assertTrue(started_building.wait(timeout=10))
 
     @tempdir({"foo.docs": "a"})
     @tempdir({"foo.site": "original"})
@@ -277,6 +277,8 @@ class BuildTests(unittest.TestCase):
     )
     def test_serves_modified_html(self, site_dir):
         with testing_server(site_dir) as server:
+            server.watch(site_dir)
+
             headers, output = do_request(server, "GET /normal.html")
             self.assertRegex(output, fr"^<html><body>hello{SCRIPT_REGEX}</body></html>$")
             self.assertEqual(headers.get("content-type"), "text/html")
@@ -293,31 +295,56 @@ class BuildTests(unittest.TestCase):
             self.assertRegex(output, fr"^<body>foo</body><body>bar{SCRIPT_REGEX}</body>$")
 
     @tempdir({"index.html": "<body>aaa</body>", "foo/index.html": "<body>bbb</body>"})
-    def test_serves_modified_index(self, site_dir):
+    def test_serves_directory_index(self, site_dir):
         with testing_server(site_dir) as server:
             headers, output = do_request(server, "GET /")
-            self.assertRegex(output, fr"^<body>aaa{SCRIPT_REGEX}</body>$")
+            self.assertRegex(output, r"^<body>aaa</body>$")
             self.assertEqual(headers["_status"], "200 OK")
             self.assertEqual(headers.get("content-type"), "text/html")
             self.assertEqual(headers.get("content-length"), str(len(output)))
 
-            _, output = do_request(server, "GET /foo/")
-            self.assertRegex(output, fr"^<body>bbb{SCRIPT_REGEX}</body>$")
+            for path in "/foo/", "/foo/index.html":
+                _, output = do_request(server, "GET /foo/")
+                self.assertRegex(output, r"^<body>bbb</body>$")
 
-    @tempdir()
-    def test_serves_js(self, site_dir):
+            with self.assertLogs("mkdocs.livereload"):
+                headers, _ = do_request(server, "GET /foo/index.html/")
+            self.assertEqual(headers["_status"], "404 Not Found")
+
+    @tempdir({"foo/bar/index.html": "<body>aaa</body>"})
+    def test_redirects_to_directory(self, site_dir):
+        with testing_server(site_dir, mount_path="/sub") as server:
+            with self.assertLogs("mkdocs.livereload"):
+                headers, _ = do_request(server, "GET /sub/foo/bar")
+            self.assertEqual(headers["_status"], "302 Found")
+            self.assertEqual(headers.get("location"), "/sub/foo/bar/")
+
+    @tempdir({"я.html": "<body>aaa</body>", "测试2/index.html": "<body>bbb</body>"})
+    def test_serves_with_unicode_characters(self, site_dir):
         with testing_server(site_dir) as server:
-            for mount_path in "/", "/sub/":
-                server.mount_path = mount_path
+            _, output = do_request(server, "GET /я.html")
+            self.assertRegex(output, r"^<body>aaa</body>$")
+            _, output = do_request(server, "GET /%D1%8F.html")
+            self.assertRegex(output, r"^<body>aaa</body>$")
 
-                headers, output = do_request(server, "GET /js/livereload.js")
-                self.assertIn("function livereload", output)
-                self.assertEqual(headers["_status"], "200 OK")
-                self.assertEqual(headers.get("content-type"), "application/javascript")
+            with self.assertLogs("mkdocs.livereload"):
+                headers, _ = do_request(server, "GET /%D1.html")
+            self.assertEqual(headers["_status"], "404 Not Found")
+
+            _, output = do_request(server, "GET /测试2/")
+            self.assertRegex(output, r"^<body>bbb</body>$")
+            _, output = do_request(server, "GET /%E6%B5%8B%E8%AF%952/index.html")
+            self.assertRegex(output, r"^<body>bbb</body>$")
 
     @tempdir()
     def test_serves_polling_instantly(self, site_dir):
         with testing_server(site_dir) as server:
+            _, output = do_request(server, "GET /livereload/0/0")
+            self.assertTrue(output.isdigit())
+
+    @tempdir()
+    def test_serves_polling_with_mount_path(self, site_dir):
+        with testing_server(site_dir, mount_path="/test/f*o") as server:
             _, output = do_request(server, "GET /livereload/0/0")
             self.assertTrue(output.isdigit())
 
@@ -406,11 +433,11 @@ class BuildTests(unittest.TestCase):
     def test_serves_from_mount_path(self, site_dir):
         with testing_server(site_dir, mount_path="/sub") as server:
             headers, output = do_request(server, "GET /sub/")
-            self.assertRegex(output, fr"^<body>aaa{SCRIPT_REGEX}</body>$")
+            self.assertRegex(output, r"^<body>aaa</body>$")
             self.assertEqual(headers.get("content-type"), "text/html")
 
             _, output = do_request(server, "GET /sub/sub/sub.html")
-            self.assertRegex(output, fr"^<body>bbb{SCRIPT_REGEX}</body>$")
+            self.assertRegex(output, r"^<body>bbb</body>$")
 
             with self.assertLogs("mkdocs.livereload"):
                 headers, _ = do_request(server, "GET /sub/sub.html")
@@ -448,14 +475,14 @@ class BuildTests(unittest.TestCase):
             server.watch(Path(origin_dir, "mkdocs.yml"))
             time.sleep(0.01)
 
+            Path(origin_dir, "unrelated.md").write_text("foo")
+            self.assertFalse(started_building.wait(timeout=0.5))
+
             Path(tmp_dir, "mkdocs.yml").write_text("edited")
             self.assertTrue(wait_for_build())
 
             Path(dest_docs_dir, "subdir", "foo.md").write_text("edited")
             self.assertTrue(wait_for_build())
-
-            Path(origin_dir, "unrelated.md").write_text("foo")
-            self.assertFalse(started_building.wait(timeout=0.2))
 
     @tempdir(["file_dest_1.md", "file_dest_2.md", "file_dest_unused.md"], prefix="tmp_dir")
     @tempdir(["file_under.md"], prefix="dir_to_link_to")
@@ -495,7 +522,7 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(wait_for_build())
 
             Path(tmp_dir, "file_dest_unused.md").write_text("edited")
-            self.assertFalse(started_building.wait(timeout=0.2))
+            self.assertFalse(started_building.wait(timeout=0.5))
 
     @tempdir(prefix="site_dir")
     @tempdir(["docs/unused.md", "README.md"], prefix="origin_dir")

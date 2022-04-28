@@ -10,6 +10,10 @@ ways, a few examples are:
 - Documentation improvements
 - Bug reports and patch reviews
 
+For information about available communication channels please refer to the
+[README](https://github.com/mkdocs/mkdocs/blob/master/README.md) file in our
+GitHub repository.
+
 ## Code of Conduct
 
 Everyone interacting in the MkDocs project's codebases, issue trackers, chat
@@ -57,7 +61,7 @@ root of your MkDocs repository.
 
 It will attempt to run the tests against all of the Python versions we
 support. So don't be concerned if you are missing some and they fail. The rest
-will be verified by [Travis] when you submit a pull request.
+will be verified by [Github Actions] when you submit a pull request.
 
 ## Translating themes
 
@@ -66,7 +70,10 @@ Themes]. We welcome translation Pull Requests!
 
 ## Submitting Pull Requests
 
-Once you are happy with your changes or you are ready for some feedback, push
+If you're considering a large code contribution to MkDocs, please prefer to
+open an issue first to get early feedback on the idea.
+
+Once you think the code is ready to be reviewed, push
 it to your fork and send a pull request. For a change to be accepted it will
 most likely need to have tests and documentation if it is a new feature.
 
@@ -100,7 +107,7 @@ Themes] for details.
 [virtualenv]: https://virtualenv.pypa.io/en/latest/user_guide.html
 [pip]: https://pip.pypa.io/en/stable/
 [tox]: https://tox.readthedocs.io/en/latest/
-[travis]: https://travis-ci.org/repositories
+[Github Actions]: https://docs.github.com/actions
 [PyPA Code of Conduct]: https://www.pypa.io/en/latest/code-of-conduct/
 [Translating Themes]: ../dev-guide/translations.md
-[Jinja's i18n extension]: https://jinja.palletsprojects.com/en/master/extensions/#i18n-extension
+[Jinja's i18n extension]: https://jinja.palletsprojects.com/en/latest/extensions/#i18n-extension

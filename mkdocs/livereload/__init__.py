@@ -5,15 +5,41 @@ import mimetypes
 import os
 import os.path
 import pathlib
+import posixpath
 import re
 import socketserver
+import string
 import threading
 import time
 import warnings
 import wsgiref.simple_server
 
 import watchdog.events
-import watchdog.observers
+import watchdog.observers.polling
+
+_SCRIPT_TEMPLATE = """
+var livereload = function(epoch, requestId) {
+    var req = new XMLHttpRequest();
+    req.onloadend = function() {
+        if (parseFloat(this.responseText) > epoch) {
+            location.reload();
+            return;
+        }
+        var launchNext = livereload.bind(this, epoch, requestId);
+        if (this.status === 200) {
+            launchNext();
+        } else {
+            setTimeout(launchNext, 3000);
+        }
+    };
+    req.open("GET", "/livereload/" + epoch + "/" + requestId);
+    req.send();
+
+    console.log('Enabled live reload');
+}
+livereload(${epoch}, ${request_id});
+"""
+_SCRIPT_TEMPLATE = string.Template(_SCRIPT_TEMPLATE)
 
 
 class _LoggerAdapter(logging.LoggerAdapter):
@@ -35,7 +61,7 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
         port,
         root,
         mount_path="/",
-        build_delay=0.25,
+        polling_interval=0.5,
         shutdown_delay=0.25,
         **kwargs,
     ):
@@ -45,7 +71,7 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
         self.root = os.path.abspath(root)
         self.mount_path = ("/" + mount_path.lstrip("/")).rstrip("/") + "/"
         self.url = f"http://{self.server_name}:{self.server_port}{self.mount_path}"
-        self.build_delay = build_delay
+        self.build_delay = 0.1
         self.shutdown_delay = shutdown_delay
         # To allow custom error pages.
         self.error_handler = lambda code: None
@@ -62,7 +88,9 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
 
         self._shutdown = False
         self.serve_thread = threading.Thread(target=lambda: self.serve_forever(shutdown_delay))
-        self.observer = watchdog.observers.Observer(timeout=shutdown_delay)
+        self.observer = watchdog.observers.polling.PollingObserver(timeout=polling_interval)
+
+        self._watched_paths = {}  # Used as an ordered set.
 
     def watch(self, path, func=None, recursive=True):
         """Add the 'path' to watched paths, call the function and reload when any file changes under it."""
@@ -77,60 +105,29 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
                 stacklevel=2,
             )
 
-        def callback(event, allowed_path=None):
-            if isinstance(event, watchdog.events.DirCreatedEvent):
+        if path in self._watched_paths:
+            return
+
+        def callback(event):
+            if event.is_directory:
                 return
-            if allowed_path is not None and event.src_path != allowed_path:
-                return
-            # Text editors always cause a "file close" event in addition to "modified" when saving
-            # a file. Some editors also have "swap" functionality that keeps writing into another
-            # file that's never closed. Prevent such write events from causing a rebuild.
-            if isinstance(event, watchdog.events.FileModifiedEvent):
-                # But FileClosedEvent is implemented only on Linux, otherwise we mustn't skip this:
-                if type(self.observer).__name__ == "InotifyObserver":
-                    return
             log.debug(str(event))
             with self._rebuild_cond:
                 self._to_rebuild[func] = True
                 self._rebuild_cond.notify_all()
 
-        dir_handler = watchdog.events.FileSystemEventHandler()
-        dir_handler.on_any_event = callback
+        handler = watchdog.events.FileSystemEventHandler()
+        handler.on_any_event = callback
+        log.debug(f"Watching '{path}'")
+        self.observer.schedule(handler, path, recursive=recursive)
 
-        seen = set()
-
-        def schedule(path):
-            seen.add(path)
-            if path.is_file():
-                # Watchdog doesn't support watching files, so watch its directory and filter by path
-                handler = watchdog.events.FileSystemEventHandler()
-                handler.on_any_event = lambda event: callback(event, allowed_path=os.fspath(path))
-
-                parent = path.parent
-                log.debug(f"Watching file '{path}' through directory '{parent}'")
-                self.observer.schedule(handler, parent)
-            else:
-                log.debug(f"Watching directory '{path}'")
-                self.observer.schedule(dir_handler, path, recursive=recursive)
-
-        schedule(pathlib.Path(path).resolve())
-
-        def watch_symlink_targets(path_obj):  # path is os.DirEntry or pathlib.Path
-            if path_obj.is_symlink():
-                path_obj = pathlib.Path(path_obj).resolve()
-                if path_obj in seen or not path_obj.exists():
-                    return
-                schedule(path_obj)
-
-            if path_obj.is_dir() and recursive:
-                with os.scandir(os.fspath(path_obj)) as scan:
-                    for entry in scan:
-                        watch_symlink_targets(entry)
-
-        watch_symlink_targets(pathlib.Path(path))
+        self._watched_paths[path] = True
 
     def serve(self):
         self.observer.start()
+
+        paths_str = ", ".join(f"'{_try_relativize_path(path)}'" for path in self._watched_paths)
+        log.info(f"Watching paths for changes: {paths_str}")
 
         log.info(f"Serving on {self.url}")
         self.serve_thread.start()
@@ -200,31 +197,35 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
         return [error_content]
 
     def _serve_request(self, environ, start_response):
-        path = environ["PATH_INFO"]
+        # https://bugs.python.org/issue16679
+        # https://github.com/bottlepy/bottle/blob/f9b1849db4/bottle.py#L984
+        path = environ["PATH_INFO"].encode("latin-1").decode("utf-8", "ignore")
 
-        m = re.fullmatch(r"/livereload/([0-9]+)/[0-9]+", path)
-        if m:
-            epoch = int(m[1])
-            start_response("200 OK", [("Content-Type", "text/plain")])
+        if path.startswith("/livereload/"):
+            m = re.fullmatch(r"/livereload/([0-9]+)/[0-9]+", path)
+            if m:
+                epoch = int(m[1])
+                start_response("200 OK", [("Content-Type", "text/plain")])
 
-            def condition():
-                return self._visible_epoch > epoch
+                def condition():
+                    return self._visible_epoch > epoch
 
-            with self._epoch_cond:
-                if not condition():
-                    # Stall the browser, respond as soon as there's something new.
-                    # If there's not, respond anyway after a minute.
-                    self._log_poll_request(environ.get("HTTP_REFERER"), request_id=path)
-                    self._epoch_cond.wait_for(condition, timeout=self.poll_response_timeout)
-                return [b"%d" % self._visible_epoch]
+                with self._epoch_cond:
+                    if not condition():
+                        # Stall the browser, respond as soon as there's something new.
+                        # If there's not, respond anyway after a minute.
+                        self._log_poll_request(environ.get("HTTP_REFERER"), request_id=path)
+                        self._epoch_cond.wait_for(condition, timeout=self.poll_response_timeout)
+                    return [b"%d" % self._visible_epoch]
 
-        if path == "/js/livereload.js":
-            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "livereload.js")
-        elif path.startswith(self.mount_path):
+        if path.startswith(self.mount_path):
+            rel_file_path = path[len(self.mount_path):]
+
             if path.endswith("/"):
-                path += "index.html"
-            path = path[len(self.mount_path):]
-            file_path = os.path.join(self.root, path.lstrip("/"))
+                rel_file_path += "index.html"
+            # Prevent directory traversal - normalize the path.
+            rel_file_path = posixpath.normpath("/" + rel_file_path).lstrip("/")
+            file_path = os.path.join(self.root, rel_file_path)
         elif path == "/":
             start_response("302 Found", [("Location", self.mount_path)])
             return []
@@ -239,9 +240,12 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
         try:
             file = open(file_path, "rb")
         except OSError:
+            if not path.endswith("/") and os.path.isfile(os.path.join(file_path, "index.html")):
+                start_response("302 Found", [("Location", path + "/")])
+                return []
             return None  # Not found
 
-        if path.endswith(".html"):
+        if self._watched_paths and file_path.endswith(".html"):
             with file:
                 content = file.read()
             content = self._inject_js_into_html(content, epoch)
@@ -256,17 +260,18 @@ class LiveReloadServer(socketserver.ThreadingMixIn, wsgiref.simple_server.WSGISe
         )
         return wsgiref.util.FileWrapper(file)
 
-    @classmethod
-    def _inject_js_into_html(cls, content, epoch):
+    def _inject_js_into_html(self, content, epoch):
         try:
             body_end = content.rindex(b"</body>")
         except ValueError:
             body_end = len(content)
         # The page will reload if the livereload poller returns a newer epoch than what it knows.
         # The other timestamp becomes just a unique identifier for the initiating page.
-        return (
-            b'%b<script src="/js/livereload.js"></script><script>livereload(%d, %d);</script>%b'
-            % (content[:body_end], epoch, _timestamp(), content[body_end:])
+        script = _SCRIPT_TEMPLATE.substitute(epoch=epoch, request_id=_timestamp())
+        return b"%b<script>%b</script>%b" % (
+            content[:body_end],
+            script.encode(),
+            content[body_end:],
         )
 
     @classmethod
@@ -299,3 +304,13 @@ class _Handler(wsgiref.simple_server.WSGIRequestHandler):
 
 def _timestamp():
     return round(time.monotonic() * 1000)
+
+
+def _try_relativize_path(path):
+    """Make the path relative to current directory if it's under that directory."""
+    path = pathlib.Path(path)
+    try:
+        path = path.relative_to(os.getcwd())
+    except ValueError:
+        pass
+    return str(path)
